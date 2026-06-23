@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/pending_notification.dart';
@@ -46,6 +47,7 @@ class PendingNotificationService {
     required int accountId,
     String? description,
   }) async {
+    debugPrint('[PendingService] PATCH /pending-notifications/$id/approve');
     final response = await http.patch(
       Uri.parse('${ApiConfig.baseUrl}/pending-notifications/$id/approve'),
       headers: _headers,
@@ -56,17 +58,20 @@ class PendingNotificationService {
       }),
     );
     final data = jsonDecode(response.body);
+    debugPrint('[PendingService] Approve response: ${response.statusCode} - $data');
     if (response.statusCode != 200) {
       throw Exception(data['message'] ?? 'Failed to approve pending notification');
     }
   }
 
   Future<void> rejectPendingNotification(int id) async {
+    debugPrint('[PendingService] DELETE /pending-notifications/$id/reject');
     final response = await http.delete(
       Uri.parse('${ApiConfig.baseUrl}/pending-notifications/$id/reject'),
       headers: _headers,
     );
     final data = jsonDecode(response.body);
+    debugPrint('[PendingService] Reject response: ${response.statusCode} - $data');
     if (response.statusCode != 200) {
       throw Exception(data['message'] ?? 'Failed to reject pending notification');
     }

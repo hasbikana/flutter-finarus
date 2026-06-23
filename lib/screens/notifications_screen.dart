@@ -1,13 +1,18 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
 import '../config/colors.dart';
+import '../config/api_config.dart';
 import '../providers/notification_provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/category_provider.dart';
 import '../providers/account_provider.dart';
 import '../models/app_notification.dart';
 import '../models/pending_notification.dart';
 import '../widgets/glass_card.dart';
 import '../utils/format.dart';
+import '../services/notif_listener_helper.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -17,12 +22,80 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
+  bool _listenerEnabled = false;
+  bool _checkingListener = true;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<NotificationProvider>().fetchPending();
+      _checkListener();
     });
+  }
+
+  Future<void> _checkListener() async {
+    final enabled = await NotifListenerHelper.isEnabled();
+    if (mounted) {
+      setState(() {
+        _listenerEnabled = enabled;
+        _checkingListener = false;
+      });
+    }
+  }
+
+  Future<void> _openListenerSettings() async {
+    await NotifListenerHelper.openSettings();
+    // Check again after returning
+    await Future.delayed(const Duration(seconds: 2));
+    _checkListener();
+  }
+
+  Future<void> _testCapture() async {
+    final auth = context.read<AuthProvider>();
+    final token = auth.token;
+    if (token == null) return;
+
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/pending-notifications'),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'type': 'expense',
+          'amount': 50000,
+          'merchant': 'Test Merchant',
+          'raw_body': 'Notifikasi test dari Finarus',
+          'notification_date': DateTime.now().toIso8601String().split('T').first,
+          'source': 'push_notif',
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Test pending berhasil dibuat')),
+          );
+          context.read<NotificationProvider>().fetchPending();
+        }
+      } else {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal: ${data['message'] ?? response.statusCode}')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -40,6 +113,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         elevation: 0,
         foregroundColor: FinarusColors.foreground,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => context.read<NotificationProvider>().fetchPending(),
+            tooltip: 'Muat ulang',
+          ),
           if (localHistory.isNotEmpty)
             TextButton(
               onPressed: () => notifProvider.markAllLocalAsRead(),
@@ -52,40 +130,54 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           gradient: FinarusColors.bgGradient(),
         ),
         child: SafeArea(
-          child: RefreshIndicator(
-            onRefresh: () => notifProvider.fetchPending(),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              children: [
-                if (pendingItems.isNotEmpty) ...[
-                  _SectionTitle('Menunggu Konfirmasi (${pendingItems.length})'),
-                  const SizedBox(height: 12),
-                  ...pendingItems.map((p) => _PendingCard(
-                    pending: p,
-                    onApprove: () => _showApproveSheet(context, p),
-                    onReject: () => _rejectPending(context, p),
-                  )),
-                  const SizedBox(height: 28),
-                ],
-                if (localHistory.isNotEmpty) ...[
-                  _SectionTitle('Riwayat'),
-                  const SizedBox(height: 12),
-                  ...localHistory.map((n) => _HistoryCard(notification: n)),
-                ] else if (pendingItems.isEmpty) ...[
-                  const SizedBox(height: 80),
-                  const Center(
-                    child: Column(
-                      children: [
-                        Icon(Icons.notifications_none, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('Belum ada notifikasi', style: TextStyle(color: Colors.grey)),
-                      ],
+          child: notifProvider.pendingLoading && pendingItems.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : notifProvider.pendingError != null && pendingItems.isEmpty
+                  ? _ErrorState(
+                      message: notifProvider.pendingError!,
+                      onRetry: () => notifProvider.fetchPending(),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () => notifProvider.fetchPending(),
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                        children: [
+                          if (!_checkingListener && !_listenerEnabled)
+                            _NotificationAccessCard(
+                              onOpenSettings: _openListenerSettings,
+                              onTest: _testCapture,
+                            ),
+                          if (!_checkingListener && !_listenerEnabled)
+                            const SizedBox(height: 16),
+                          if (pendingItems.isNotEmpty) ...[
+                            _SectionTitle('Menunggu Konfirmasi (${pendingItems.length})'),
+                            const SizedBox(height: 12),
+                            ...pendingItems.map((p) => _PendingCard(
+                              pending: p,
+                              onApprove: () => _showApproveSheet(context, p),
+                              onReject: () => _rejectPending(context, p),
+                            )),
+                            const SizedBox(height: 28),
+                          ],
+                          if (localHistory.isNotEmpty) ...[
+                            _SectionTitle('Riwayat'),
+                            const SizedBox(height: 12),
+                            ...localHistory.map((n) => _HistoryCard(notification: n)),
+                          ] else if (pendingItems.isEmpty) ...[
+                            const SizedBox(height: 80),
+                            const Center(
+                              child: Column(
+                                children: [
+                                  Icon(Icons.notifications_none, size: 64, color: Colors.grey),
+                                  SizedBox(height: 16),
+                                  Text('Belum ada notifikasi', style: TextStyle(color: Colors.grey)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
         ),
       ),
     );
@@ -140,6 +232,81 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
 // ── Widgets ─────────────────────────────────────────────────────────
 
+class _NotificationAccessCard extends StatelessWidget {
+  final VoidCallback onOpenSettings;
+  final VoidCallback onTest;
+
+  const _NotificationAccessCard({
+    required this.onOpenSettings,
+    required this.onTest,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      borderRadius: 20,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: FinarusColors.chartOrange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.notifications_off, color: FinarusColors.chartOrange, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Capture Notifikasi Mati',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: FinarusColors.foreground,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Aktifkan akses notifikasi untuk auto-capture dari DANA, GoPay, BCA, dan lainnya.',
+            style: TextStyle(fontSize: 12, color: FinarusColors.mutedFg),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onTest,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: FinarusColors.mutedFg,
+                    side: BorderSide(color: FinarusColors.border),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: const Text('Test', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: GlassButton(
+                  onPressed: onOpenSettings,
+                  child: const Text('Aktifkan', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionTitle extends StatelessWidget {
   final String text;
   const _SectionTitle(this.text);
@@ -152,6 +319,51 @@ class _SectionTitle extends StatelessWidget {
         fontWeight: FontWeight.bold,
         fontSize: 16,
         color: FinarusColors.foreground,
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cloud_off, size: 48, color: FinarusColors.expense),
+            const SizedBox(height: 16),
+            Text(
+              'Gagal memuat notifikasi',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: FinarusColors.foreground,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: FinarusColors.mutedFg),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Coba Lagi'),
+            ),
+          ],
+        ),
       ),
     );
   }

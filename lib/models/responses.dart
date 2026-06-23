@@ -1,5 +1,6 @@
 import 'transaction.dart';
 import 'account.dart';
+import '../utils/convert.dart';
 
 class TransactionResponse {
   final List<Transaction> data;
@@ -42,7 +43,7 @@ class AccountListResponse {
       data: (json['data'] as List)
           .map((e) => Account.fromJson(e))
           .toList(),
-      totalBalance: (json['meta']['total_balance'] as num).toDouble(),
+      totalBalance: toDouble(json['meta']?['total_balance']),
       totalAccounts: json['meta']['total_accounts'],
     );
   }
@@ -65,9 +66,9 @@ class MonthlyReport {
 
   factory MonthlyReport.fromJson(Map<String, dynamic> json) {
     return MonthlyReport(
-      totalIncome: (json['total_income'] as num).toDouble(),
-      totalExpense: (json['total_expense'] as num).toDouble(),
-      balance: (json['balance'] as num).toDouble(),
+      totalIncome: toDouble(json['total_income']),
+      totalExpense: toDouble(json['total_expense']),
+      balance: toDouble(json['balance']),
       month: json['month'],
       year: json['year'],
     );
@@ -93,9 +94,9 @@ class TrendPoint {
     return TrendPoint(
       month: json['month'],
       monthName: json['month_name'],
-      income: (json['income'] as num).toDouble(),
-      expense: (json['expense'] as num).toDouble(),
-      net: (json['net'] as num).toDouble(),
+      income: toDouble(json['income']),
+      expense: toDouble(json['expense']),
+      net: toDouble(json['net']),
     );
   }
 }
@@ -140,7 +141,7 @@ class CategoryTotal {
       categoryName: json['category_name'],
       categoryIcon: json['category_icon'],
       categoryColor: json['category_color'],
-      total: (json['total'] as num).toDouble(),
+      total: toDouble(json['total']),
     );
   }
 }

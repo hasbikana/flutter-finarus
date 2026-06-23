@@ -1,3 +1,5 @@
+import '../utils/convert.dart';
+
 class PendingNotification {
   final int id;
   final String type; // income | expense
@@ -31,7 +33,7 @@ class PendingNotification {
     return PendingNotification(
       id: json['id'],
       type: json['type'],
-      amount: (json['amount'] as num).toDouble(),
+      amount: toDouble(json['amount']),
       description: json['description'],
       merchant: json['merchant'],
       notificationDate: json['notification_date'],

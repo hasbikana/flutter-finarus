@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'category.dart';
 
+import '../utils/convert.dart';
+
 class Budget {
   final int id;
   final int categoryId;
@@ -30,7 +32,7 @@ class Budget {
     return Budget(
       id: json['id'],
       categoryId: json['category_id'] ?? json['category']?['id'],
-      amount: (json['amount'] as num).toDouble(),
+      amount: toDouble(json['amount']),
       month: json['month'],
       year: json['year'],
       category: json['category'] != null

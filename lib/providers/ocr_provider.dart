@@ -81,7 +81,9 @@ class OcrProvider extends ChangeNotifier {
   }
 
   void processText(String text) {
+    debugPrint('[OCR] processText received (${text.length} chars): ${text.length > 100 ? "${text.substring(0, 100)}..." : text}');
     _notifResult = NotificationParser.parse(text);
+    debugPrint('[OCR] Parse result: ${_notifResult != null ? "${_notifResult!.type} ${_notifResult!.amount} merchant=${_notifResult!.merchant}" : "null"}');
     _ocrResult = null;
     _image = null;
     notifyListeners();
@@ -169,5 +171,6 @@ extension NotificationParseResultJson on NotificationParseResult {
     'amount': amount,
     if (merchant != null) 'merchant': merchant,
     'raw_body': rawBody,
+    'notification_date': DateTime.now().toIso8601String().split('T').first,
   };
 }

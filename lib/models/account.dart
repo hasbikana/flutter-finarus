@@ -1,3 +1,5 @@
+import '../utils/convert.dart';
+
 class Account {
   final int id;
   final String name;
@@ -26,7 +28,7 @@ class Account {
       provider: json['provider'],
       type: json['type'],
       accountNumber: json['account_number'],
-      balance: (json['balance'] as num).toDouble(),
+      balance: toDouble(json['balance']),
       logo: json['logo'],
     );
   }

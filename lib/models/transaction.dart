@@ -2,6 +2,8 @@ import 'category.dart';
 import 'account.dart';
 import 'saving_goal.dart';
 
+import '../utils/convert.dart';
+
 class Transaction {
   final int id;
   final String type; // 'income' | 'expense'
@@ -39,7 +41,7 @@ class Transaction {
     return Transaction(
       id: json['id'],
       type: json['type'],
-      amount: (json['amount'] as num).toDouble(),
+      amount: toDouble(json['amount']),
       description: json['description'],
       transactionDate: DateTime.parse(json['transaction_date']),
       emailMessageId: json['email_message_id'],

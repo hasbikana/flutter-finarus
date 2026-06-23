@@ -98,8 +98,10 @@ class NotificationProvider extends ChangeNotifier {
 
     try {
       _pendingItems = await _pendingService.getPendingNotifications();
+      debugPrint('Pending notifications loaded: ${_pendingItems.length} items');
     } catch (e) {
       _pendingError = e.toString();
+      debugPrint('Failed to load pending notifications: $_pendingError');
     }
 
     _pendingLoading = false;
@@ -109,6 +111,7 @@ class NotificationProvider extends ChangeNotifier {
   Future<bool> approvePending(int id, int categoryId, int accountId, {String? description}) async {
     if (_pendingService == null) return false;
     try {
+      debugPrint('[ApprovePending] Approving id=$id, cat=$categoryId, acc=$accountId');
       await _pendingService.approvePendingNotification(
         id: id,
         categoryId: categoryId,
@@ -117,8 +120,10 @@ class NotificationProvider extends ChangeNotifier {
       );
       _pendingItems.removeWhere((p) => p.id == id);
       notifyListeners();
+      debugPrint('[ApprovePending] Success: id=$id removed from list');
       return true;
     } catch (e) {
+      debugPrint('[ApprovePending] Error: $e');
       return false;
     }
   }
@@ -126,11 +131,14 @@ class NotificationProvider extends ChangeNotifier {
   Future<bool> rejectPending(int id) async {
     if (_pendingService == null) return false;
     try {
+      debugPrint('[RejectPending] Rejecting id=$id');
       await _pendingService.rejectPendingNotification(id);
       _pendingItems.removeWhere((p) => p.id == id);
       notifyListeners();
+      debugPrint('[RejectPending] Success: id=$id');
       return true;
     } catch (e) {
+      debugPrint('[RejectPending] Error: $e');
       return false;
     }
   }

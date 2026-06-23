@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import '../utils/convert.dart';
+
 class SavingGoal {
   final int id;
   final String name;
@@ -28,8 +30,8 @@ class SavingGoal {
     return SavingGoal(
       id: json['id'],
       name: json['name'],
-      targetAmount: (json['target_amount'] as num).toDouble(),
-      currentAmount: (json['current_amount'] as num).toDouble(),
+      targetAmount: toDouble(json['target_amount']),
+      currentAmount: toDouble(json['current_amount']),
       deadline: json['deadline'] != null
           ? DateTime.parse(json['deadline'])
           : null,

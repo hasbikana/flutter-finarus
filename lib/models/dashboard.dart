@@ -1,6 +1,8 @@
 import 'transaction.dart';
 import 'budget.dart';
 
+import '../utils/convert.dart';
+
 class Dashboard {
   final double balance;
   final double totalIncome;
@@ -20,9 +22,9 @@ class Dashboard {
 
   factory Dashboard.fromJson(Map<String, dynamic> json) {
     return Dashboard(
-      balance: (json['balance'] as num?)?.toDouble() ?? 0,
-      totalIncome: (json['total_income'] as num?)?.toDouble() ?? 0,
-      totalExpense: (json['total_expense'] as num?)?.toDouble() ?? 0,
+      balance: toDouble(json['balance']),
+      totalIncome: toDouble(json['total_income']),
+      totalExpense: toDouble(json['total_expense']),
       activeSavingGoals: json['active_saving_goals'] ?? 0,
       recentTransactions: (json['recent_transactions'] as List?)
           ?.map((e) => Transaction.fromJson(e))
