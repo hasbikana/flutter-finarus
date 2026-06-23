@@ -1,0 +1,3 @@
+GOOGLE_CLIENT_ID=21594976412-s99hc0i7c38f1npkmep65e12lantfjhv.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=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
+GOOGLE_REDIRECT_URI="${APP_URL}/oauth/google/callback"
