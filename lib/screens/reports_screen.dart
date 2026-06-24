@@ -140,7 +140,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                       value: cat.total,
                                       color: colors[i % colors.length],
                                       radius: 70,
-                                      title: '${cat.categoryName}\n${formatRupiah(cat.total)}',
+                                      title: '${cat.categoryName}\n${formatRupiahCompact(cat.total)}',
                                       titleStyle: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
                                     );
                                   }).toList(),
@@ -194,7 +194,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                   ),
                                   const SizedBox(width: 10),
                                   Text(
-                                    formatRupiah(cat.total),
+                                    formatRupiahCompact(cat.total),
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: FinarusColors.foreground,
@@ -376,7 +376,7 @@ class _SummaryGlassCard extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            formatRupiah(amount),
+            formatRupiahCompact(amount),
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,

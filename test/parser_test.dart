@@ -119,6 +119,69 @@ void main() {
     test('returns null when no amount', () {
       expect(NotificationParser.parse('Halo, ini pesan tanpa nominal'), isNull);
     });
+
+    test('picks transaction amount over balance', () {
+      final result = NotificationParser.parse('Saldo Anda Rp1.000.000. Pembayaran Rp50.000 berhasil');
+      expect(result, isNotNull);
+      expect(result!.amount, 50000.0);
+      expect(result.type, 'expense');
+    });
+
+    test('DANA Send Money English', () {
+      final result = NotificationParser.parse('Send Money Rp50.000 to Budi Santoso');
+      expect(result, isNotNull);
+      expect(result!.type, 'expense');
+      expect(result.amount, 50000.0);
+      expect(result.merchant, 'Budi Santoso');
+    });
+
+    test('DANA Receive Money English', () {
+      final result = NotificationParser.parse('Receive Money Rp100.000 from Andi Wijaya');
+      expect(result, isNotNull);
+      expect(result!.type, 'income');
+      expect(result.amount, 100000.0);
+      expect(result.merchant, 'Andi Wijaya');
+    });
+
+    test('DANA kirim uang Indonesian', () {
+      final result = NotificationParser.parse('Kirim Uang Rp75.000 ke Siti Aminah berhasil');
+      expect(result, isNotNull);
+      expect(result!.type, 'expense');
+      expect(result.amount, 75000.0);
+      expect(result.merchant, 'Siti Aminah');
+    });
+
+    test('DANA diterima Indonesian', () {
+      final result = NotificationParser.parse('Rp200.000 diterima dari PT Maju Jaya');
+      expect(result, isNotNull);
+      expect(result!.type, 'income');
+      expect(result.amount, 200000.0);
+      expect(result.merchant, 'PT Maju Jaya');
+    });
+
+    test('QRIS payment at merchant', () {
+      final result = NotificationParser.parse('Pembayaran QRIS Rp30.000 di Warung Kopi via DANA berhasil');
+      expect(result, isNotNull);
+      expect(result!.type, 'expense');
+      expect(result.amount, 30000.0);
+      expect(result.merchant, 'Warung Kopi');
+    });
+
+    test('transfer masuk income', () {
+      final result = NotificationParser.parse('Transfer Rp250.000 dari Rekening BCA berhasil masuk');
+      expect(result, isNotNull);
+      expect(result!.type, 'income');
+      expect(result.amount, 250000.0);
+      expect(result.merchant, 'Rekening BCA');
+    });
+
+    test('top up income', () {
+      final result = NotificationParser.parse('Top Up DANA Rp500.000 dari Bank Mandiri berhasil');
+      expect(result, isNotNull);
+      expect(result!.type, 'income');
+      expect(result.amount, 500000.0);
+      expect(result.merchant, 'Bank Mandiri');
+    });
   });
 
   group('OcrParser.parse', () {

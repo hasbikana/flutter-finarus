@@ -22,7 +22,11 @@ class MainActivity : FlutterActivity() {
             setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getCapturedNotifications" -> {
-                        val captures = readCapturedNotifications()
+                        val captures = readCapturedNotifications(deleteAfterRead = true)
+                        result.success(captures)
+                    }
+                    "peekCapturedNotifications" -> {
+                        val captures = readCapturedNotifications(deleteAfterRead = false)
                         result.success(captures)
                     }
                     "openNotificationAccessSettings" -> {
@@ -31,6 +35,23 @@ class MainActivity : FlutterActivity() {
                     }
                     "isNotificationListenerEnabled" -> {
                         result.success(isNotificationListenerEnabled())
+                    }
+                    "getDetectedApps" -> {
+                        result.success(NotifCaptureService.getDetectedAppsWithStatus(this@MainActivity))
+                    }
+                    "setAllowedApps" -> {
+                        val appIds = call.argument<List<String>>("appIds") ?: emptyList()
+                        NotifCaptureService.saveAllowedApps(this@MainActivity, appIds.toSet())
+                        result.success(true)
+                    }
+                    "resolveAppName" -> {
+                        val appId = call.argument<String>("appId") ?: ""
+                        result.success(resolveAppName(appId))
+                    }
+                    "markAppsSeen" -> {
+                        val appIds = call.argument<List<String>>("appIds") ?: emptyList()
+                        NotifCaptureService.markAppsSeen(this@MainActivity, appIds)
+                        result.success(true)
                     }
                     "resolveSharedFile" -> {
                         val uriString = call.argument<String>("uri")
@@ -65,7 +86,16 @@ class MainActivity : FlutterActivity() {
         return flat.contains(packageName)
     }
 
-    private fun readCapturedNotifications(): List<Map<String, Any>> {
+    private fun resolveAppName(appId: String): String? {
+        return try {
+            val appInfo = packageManager.getApplicationInfo(appId, 0)
+            packageManager.getApplicationLabel(appInfo)?.toString()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun readCapturedNotifications(deleteAfterRead: Boolean): List<Map<String, Any>> {
         return try {
             val file = File(cacheDir, "captured_notifs.json")
             if (!file.exists()) return emptyList()
@@ -85,7 +115,9 @@ class MainActivity : FlutterActivity() {
                 ))
             }
 
-            file.delete()
+            if (deleteAfterRead) {
+                file.delete()
+            }
             result
         } catch (e: Exception) {
             emptyList()

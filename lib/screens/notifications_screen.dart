@@ -10,9 +10,11 @@ import '../providers/category_provider.dart';
 import '../providers/account_provider.dart';
 import '../models/app_notification.dart';
 import '../models/pending_notification.dart';
+import '../models/detected_app.dart';
 import '../widgets/glass_card.dart';
 import '../utils/format.dart';
 import '../services/notif_listener_helper.dart';
+import 'notification_apps_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -24,6 +26,11 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _listenerEnabled = false;
   bool _checkingListener = true;
+  List<Map<String, dynamic>> _capturedDebug = [];
+  List<DetectedApp> _detectedApps = [];
+
+  int get _newAppsCount => _detectedApps.where((a) => a.isNew).length;
+  int get _allowedAppsCount => _detectedApps.where((a) => a.allowed).length;
 
   @override
   void initState() {
@@ -31,6 +38,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<NotificationProvider>().fetchPending();
       _checkListener();
+      _peekCaptured();
+      _loadDetectedApps();
     });
   }
 
@@ -40,6 +49,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       setState(() {
         _listenerEnabled = enabled;
         _checkingListener = false;
+      });
+    }
+  }
+
+  Future<void> _peekCaptured() async {
+    final captures = await NotifListenerHelper.peekCaptured();
+    if (mounted) {
+      setState(() {
+        _capturedDebug = captures;
+      });
+    }
+  }
+
+  Future<void> _loadDetectedApps() async {
+    final apps = await NotifListenerHelper.getDetectedApps();
+    if (mounted) {
+      setState(() {
+        _detectedApps = apps;
       });
     }
   }
@@ -138,7 +165,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       onRetry: () => notifProvider.fetchPending(),
                     )
                   : RefreshIndicator(
-                      onRefresh: () => notifProvider.fetchPending(),
+                      onRefresh: () async {
+                        await context.read<NotificationProvider>().fetchPending();
+                        await _checkListener();
+                        await _peekCaptured();
+                        await _loadDetectedApps();
+                      },
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                         children: [
@@ -148,6 +180,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               onTest: _testCapture,
                             ),
                           if (!_checkingListener && !_listenerEnabled)
+                            const SizedBox(height: 16),
+                          if (!_checkingListener && _listenerEnabled)
+                            _ListenerStatusCard(
+                              captures: _capturedDebug,
+                              onRefresh: () async {
+                                await _checkListener();
+                                await _peekCaptured();
+                              },
+                            ),
+                          if (!_checkingListener && _listenerEnabled)
+                            const SizedBox(height: 16),
+                          if (!_checkingListener && _listenerEnabled)
+                            _AppsManagementCard(
+                              totalApps: _detectedApps.length,
+                              allowedApps: _allowedAppsCount,
+                              newApps: _newAppsCount,
+                              onTap: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const NotificationAppsScreen()),
+                                );
+                                _loadDetectedApps();
+                              },
+                            ),
+                          if (!_checkingListener && _listenerEnabled)
                             const SizedBox(height: 16),
                           if (pendingItems.isNotEmpty) ...[
                             _SectionTitle('Menunggu Konfirmasi (${pendingItems.length})'),
@@ -312,6 +369,184 @@ class _NotificationAccessCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ListenerStatusCard extends StatelessWidget {
+  final List<Map<String, dynamic>> captures;
+  final VoidCallback onRefresh;
+
+  const _ListenerStatusCard({
+    required this.captures,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final lastCapture = captures.isNotEmpty ? captures.last : null;
+
+    return GlassCard(
+      borderRadius: 20,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: FinarusColors.income.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.notifications_active, color: FinarusColors.income, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Capture Notifikasi Aktif',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: FinarusColors.foreground,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: onRefresh,
+                icon: const Icon(Icons.refresh, size: 20),
+                color: FinarusColors.mutedFg,
+                tooltip: 'Refresh',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (lastCapture != null) ...[
+            Text(
+              'Terakhir terekam:',
+              style: TextStyle(fontSize: 12, color: FinarusColors.mutedFg),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: FinarusColors.secondary.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    lastCapture['app']?.toString() ?? '-',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: FinarusColors.mutedFg,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    lastCapture['text']?.toString() ?? '-',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: FinarusColors.foreground,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            Text(
+              'Belum ada notifikasi yang terekam. Coba refresh setelah menerima notifikasi DANA/GoPay/OVO/BCA.',
+              style: TextStyle(fontSize: 12, color: FinarusColors.mutedFg),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AppsManagementCard extends StatelessWidget {
+  final int totalApps;
+  final int allowedApps;
+  final int newApps;
+  final VoidCallback onTap;
+
+  const _AppsManagementCard({
+    required this.totalApps,
+    required this.allowedApps,
+    required this.newApps,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      borderRadius: 20,
+      padding: const EdgeInsets.all(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: FinarusColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.app_shortcut, color: FinarusColors.primary, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Kelola Aplikasi Capture',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: FinarusColors.foreground,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$totalApps terdeteksi • $allowedApps diizinkan',
+                        style: TextStyle(fontSize: 12, color: FinarusColors.mutedFg),
+                      ),
+                    ],
+                  ),
+                ),
+                if (newApps > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: FinarusColors.chartOrange.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$newApps baru',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: FinarusColors.chartOrange,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right, color: FinarusColors.mutedFg),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
