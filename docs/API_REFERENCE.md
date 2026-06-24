@@ -666,11 +666,52 @@ Content-Type: application/json
 }
 ```
 
+Validation rules:
+| Field | Rules |
+|-------|-------|
+| `category_id` | **required**, `Rule::exists('categories')->where('user_id', auth()->id())` |
+| `account_id` | **required**, `Rule::exists('accounts')->where('user_id', auth()->id())` |
+| `description` | nullable, string, max:1000 |
+
+> `category_id` & `account_id` diverifikasi milik user yang login, bukan global.
+
+**Response `200`:**
+```json
+{
+  "message": "Transaksi berhasil dibuat dari notifikasi",
+  "transaction": {
+    "id": 1,
+    "type": "expense",
+    "amount": 50000.00,
+    "description": "Indomaret",
+    "transaction_date": "2026-06-23",
+    "is_pending": false,
+    "pending_source": "push_notif",
+    "category": { "id": 1, "name": "Makanan" },
+    "account": { "id": 1, "name": "Cash / Dompet" }
+  }
+}
+```
+
 ### Reject
 
 ```http
 DELETE /api/pending-notifications/{id}/reject
 Authorization: Bearer <token>
+```
+
+**Response `200`:**
+```json
+{
+  "message": "Notifikasi ditolak"
+}
+```
+
+**Error `400`** (jika sudah diproses sebelumnya):
+```json
+{
+  "message": "Notifikasi sudah diproses"
+}
 ```
 
 ### Count Unread

@@ -36,7 +36,7 @@ class PendingNotificationService {
     );
     final data = jsonDecode(response.body);
     if (response.statusCode == 200) {
-      return data['count'] ?? 0;
+      return data['pending_count'] ?? data['count'] ?? 0;
     }
     throw Exception(data['message'] ?? 'Failed to load pending count');
   }
@@ -57,10 +57,9 @@ class PendingNotificationService {
         if (description != null) 'description': description,
       }),
     );
-    final data = jsonDecode(response.body);
-    debugPrint('[PendingService] Approve response: ${response.statusCode} - $data');
-    if (response.statusCode != 200) {
-      throw Exception(data['message'] ?? 'Failed to approve pending notification');
+    debugPrint('[PendingService] Approve response: ${response.statusCode} - ${response.body}');
+    if (!_isSuccessStatus(response.statusCode)) {
+      throw Exception(_extractMessage(response));
     }
   }
 
@@ -70,10 +69,23 @@ class PendingNotificationService {
       Uri.parse('${ApiConfig.baseUrl}/pending-notifications/$id/reject'),
       headers: _headers,
     );
-    final data = jsonDecode(response.body);
-    debugPrint('[PendingService] Reject response: ${response.statusCode} - $data');
-    if (response.statusCode != 200) {
-      throw Exception(data['message'] ?? 'Failed to reject pending notification');
+    debugPrint('[PendingService] Reject response: ${response.statusCode} - ${response.body}');
+    if (!_isSuccessStatus(response.statusCode)) {
+      throw Exception(_extractMessage(response));
     }
+  }
+
+  static bool _isSuccessStatus(int statusCode) {
+    return statusCode == 200 || statusCode == 201 || statusCode == 204;
+  }
+
+  static String _extractMessage(http.Response response) {
+    final body = response.body.trim();
+    if (body.isEmpty) return 'Request failed with status ${response.statusCode}';
+    try {
+      final data = jsonDecode(body);
+      if (data is Map && data['message'] != null) return data['message'].toString();
+    } catch (_) {}
+    return 'Request failed with status ${response.statusCode}';
   }
 }

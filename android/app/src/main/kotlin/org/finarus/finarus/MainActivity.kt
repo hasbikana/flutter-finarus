@@ -1,8 +1,9 @@
 package org.finarus.finarus
 
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
-import android.service.notification.NotificationListenerService
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -11,23 +12,15 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "org.finarus.finarus/share"
-    private var sharedText: String? = null
-    private var sharedImagePath: String? = null
+    private val TAG = "FinarusShare"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        handleIntent(intent)
+        Log.d(TAG, "configureFlutterEngine, action=${intent?.action} type=${intent?.type}")
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).apply {
             setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "getSharedData" -> {
-                        val data = mutableMapOf<String, String>()
-                        sharedText?.let { data["text"] = it }
-                        sharedImagePath?.let { data["imagePath"] = it }
-                        sharedText = null
-                        sharedImagePath = null
-                        result.success(data)
-                    }
                     "getCapturedNotifications" -> {
                         val captures = readCapturedNotifications()
                         result.success(captures)
@@ -38,6 +31,19 @@ class MainActivity : FlutterActivity() {
                     }
                     "isNotificationListenerEnabled" -> {
                         result.success(isNotificationListenerEnabled())
+                    }
+                    "resolveSharedFile" -> {
+                        val uriString = call.argument<String>("uri")
+                        if (uriString == null) {
+                            result.error("INVALID_URI", "URI is null", null)
+                        } else {
+                            val resolved = resolveSharedFile(uriString)
+                            if (resolved != null) {
+                                result.success(resolved)
+                            } else {
+                                result.error("COPY_FAILED", "Failed to copy shared file to cache", null)
+                            }
+                        }
                     }
                 }
             }
@@ -86,56 +92,34 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleIntent(intent, isNewIntent = true)
-    }
-
-    private fun handleIntent(intent: Intent?, isNewIntent: Boolean = false) {
-        if (intent?.action == Intent.ACTION_SEND) {
-            val type = intent.type ?: ""
-            when {
-                type.startsWith("text/") -> {
-                    sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
-                }
-                type.startsWith("image/") -> {
-                    val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
-                    if (uri != null) {
-                        sharedImagePath = copyToCache(uri)?.absolutePath
-                    }
-                }
-            }
-            if (isNewIntent) {
-                sendToFlutter()
-            }
-        }
-    }
-
-    private fun sendToFlutter() {
-        val data = mutableMapOf<String, String>()
-        sharedText?.let { data["text"] = it }
-        sharedImagePath?.let { data["imagePath"] = it }
-        if (data.isNotEmpty()) {
-            flutterEngine?.dartExecutor?.binaryMessenger?.let {
-                MethodChannel(it, CHANNEL).invokeMethod("onShare", data)
-            }
-            sharedText = null
-            sharedImagePath = null
-        }
-    }
-
-    private fun copyToCache(uri: android.net.Uri): java.io.File? {
+    /// Menyalin file dari URI (content:// atau file://) ke cache app.
+    /// Return path file di cache, atau null jika gagal.
+    private fun resolveSharedFile(uriString: String): String? {
         return try {
-            val inputStream = contentResolver.openInputStream(uri) ?: return null
-            val cacheDir = cacheDir
-            val file = java.io.File(cacheDir, "shared_${System.currentTimeMillis()}.jpg")
+            val uri = Uri.parse(uriString)
+            val inputStream = when (uri.scheme) {
+                "content", "file" -> contentResolver.openInputStream(uri)
+                else -> File(uriString).inputStream()
+            } ?: return null
+
+            val ext = when (contentResolver.getType(uri)) {
+                "image/png" -> "png"
+                "image/webp" -> "webp"
+                "image/gif" -> "gif"
+                else -> "jpg"
+            }
+            val file = File(cacheDir, "shared_${System.currentTimeMillis()}.$ext")
+
             inputStream.use { input ->
                 file.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }
-            file
+
+            Log.d(TAG, "resolveSharedFile: copied $uriString -> ${file.absolutePath}")
+            file.absolutePath
         } catch (e: Exception) {
+            Log.e(TAG, "resolveSharedFile error: ${e.message}")
             null
         }
     }

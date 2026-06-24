@@ -18,10 +18,12 @@ class NotificationProvider extends ChangeNotifier {
   List<PendingNotification> _pendingItems = [];
   bool _pendingLoading = false;
   String? _pendingError;
+  String? _lastActionError;
 
   List<PendingNotification> get pendingItems => _pendingItems;
   bool get pendingLoading => _pendingLoading;
   String? get pendingError => _pendingError;
+  String? get lastActionError => _lastActionError;
 
   // Local history
   List<AppNotification> get localHistory => _notifService.getHistory();
@@ -110,6 +112,7 @@ class NotificationProvider extends ChangeNotifier {
 
   Future<bool> approvePending(int id, int categoryId, int accountId, {String? description}) async {
     if (_pendingService == null) return false;
+    _lastActionError = null;
     try {
       debugPrint('[ApprovePending] Approving id=$id, cat=$categoryId, acc=$accountId');
       await _pendingService.approvePendingNotification(
@@ -123,13 +126,16 @@ class NotificationProvider extends ChangeNotifier {
       debugPrint('[ApprovePending] Success: id=$id removed from list');
       return true;
     } catch (e) {
-      debugPrint('[ApprovePending] Error: $e');
+      _lastActionError = e.toString();
+      debugPrint('[ApprovePending] Error: $_lastActionError');
+      notifyListeners();
       return false;
     }
   }
 
   Future<bool> rejectPending(int id) async {
     if (_pendingService == null) return false;
+    _lastActionError = null;
     try {
       debugPrint('[RejectPending] Rejecting id=$id');
       await _pendingService.rejectPendingNotification(id);
@@ -138,7 +144,9 @@ class NotificationProvider extends ChangeNotifier {
       debugPrint('[RejectPending] Success: id=$id');
       return true;
     } catch (e) {
-      debugPrint('[RejectPending] Error: $e');
+      _lastActionError = e.toString();
+      debugPrint('[RejectPending] Error: $_lastActionError');
+      notifyListeners();
       return false;
     }
   }

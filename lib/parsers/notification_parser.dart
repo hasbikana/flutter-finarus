@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../utils/amount_parser.dart';
 
 class NotificationParseResult {
   final String type;
@@ -21,9 +22,8 @@ class NotificationParser {
   /// - IDR 100.000 → IDR + 100.000
   /// - Rp200 → Rp + 200
   /// - 50.000 (without prefix)
-  static final _amountRegex = RegExp(
-    r'(?:Rp\.?|IDR|RP|idr|rp\.?)\s?([\d]+[.,]?[\d]*)|(?:^|\s)([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?)(?:\s|$)',
-  );
+  static final _amountRegex = AmountParser.amountPattern;
+
 
   /// Income keywords (ID + EN)
   static final _incomeWords = [
@@ -83,82 +83,26 @@ class NotificationParser {
       // Try group 1 (Rp-prefixed amount)
       final rpVal = match.group(1);
       if (rpVal != null) {
-        final parsed = _parseAmountStr(rpVal);
+        final parsed = AmountParser.parse(rpVal);
         if (parsed != null && parsed > 0) return parsed;
       }
 
       // Try group 2 (bare amount like "40.000" or "200")
       final bareVal = match.group(2);
       if (bareVal != null) {
-        final parsed = _parseAmountStr(bareVal);
+        final parsed = AmountParser.parse(bareVal);
         if (parsed != null && parsed > 0) return parsed;
       }
     }
 
-    // Fallback: try to find any number with dots
+    // Fallback: try to find any number with separators
     final fallback = RegExp(r'([\d]{1,3}(?:[.,]\d{3})*|[1-9]\d*)').firstMatch(body);
     if (fallback != null) {
-      final parsed = _parseAmountStr(fallback.group(1)!);
+      final parsed = AmountParser.parse(fallback.group(1)!);
       if (parsed != null && parsed > 0) return parsed;
     }
 
     return null;
-  }
-
-  static double? _parseAmountStr(String raw) {
-    // Remove leading zeros, handle thousand separators
-    // Indonesian: "50.000" → 50000 (dot = thousand)
-    // English: "1,000" → 1000 (comma = thousand)
-    // Both: "40.000" → 40000
-    // Both: "200" → 200
-
-    // If has both comma AND dot:
-    // "1.000,50" → dot = thousand, comma = decimal → 1000.50
-    // "1,000.50" → comma = thousand, dot = decimal → 1000.50
-    if (raw.contains('.') && raw.contains(',')) {
-      final lastComma = raw.lastIndexOf(',');
-      final lastDot = raw.lastIndexOf('.');
-      if (lastComma > lastDot) {
-        // "1.000,50" → remove dots, replace comma with dot
-        final num = raw.replaceAll('.', '').replaceAll(',', '.');
-        return double.tryParse(num);
-      } else {
-        // "1,000.50" → remove commas
-        final num = raw.replaceAll(',', '');
-        return double.tryParse(num);
-      }
-    }
-
-    // Only dots: "50.000" or "40.000"
-    // Could be thousand separator or decimal
-    if (raw.contains('.') && !raw.contains(',')) {
-      final parts = raw.split('.');
-      if (parts.length == 2 && parts[1].length <= 2) {
-        // "50.00" → 50.0 (decimal)
-        return double.tryParse(raw);
-      } else {
-        // "50.000" → 50000 (thousand separator)
-        final num = raw.replaceAll('.', '');
-        return double.tryParse(num);
-      }
-    }
-
-    // Only commas: "1,000" → 1000 or "1,5" → 1.5
-    if (raw.contains(',') && !raw.contains('.')) {
-      final parts = raw.split(',');
-      if (parts.length == 2 && parts[1].length <= 2) {
-        // "1,5" or "1,50" → 1.5 (decimal)
-        final num = raw.replaceAll(',', '.');
-        return double.tryParse(num);
-      } else {
-        // "1,000" → 1000 (thousand separator)
-        final num = raw.replaceAll(',', '');
-        return double.tryParse(num);
-      }
-    }
-
-    // Plain number: "200" or "50000"
-    return double.tryParse(raw);
   }
 
   static String _determineType(String lower) {

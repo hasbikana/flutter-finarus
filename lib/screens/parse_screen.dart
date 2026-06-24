@@ -26,24 +26,38 @@ class _ParseScreenState extends State<ParseScreen> {
   bool _submitting = false;
   bool _editing = false;
 
-  TextEditingController _amountController = TextEditingController();
-  TextEditingController _merchantController = TextEditingController();
-  TextEditingController _descController = TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _merchantController = TextEditingController();
+  final TextEditingController _descController = TextEditingController();
+  late OcrProvider _ocrProvider;
 
   @override
   void initState() {
     super.initState();
+    _ocrProvider = context.read<OcrProvider>();
+    _ocrProvider.addListener(_onOcrChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
     });
   }
 
+  void _onOcrChanged() {
+    if (!mounted) return;
+    // Auto-update UI saat OCR selesai, tapi jangan timpa kalau user sedang edit manual.
+    // Gunakan addPostFrameCallback untuk menghindari setState saat sedang build.
+    if (!_editing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadData();
+      });
+    }
+  }
+
   void _loadData() {
-    final ocr = context.read<OcrProvider>();
+    final ocr = _ocrProvider;
     if (ocr.ocrResult != null) {
       final r = ocr.ocrResult!;
       setState(() {
-        _type = 'expense';
+        _type = r.type;
         _amount = r.totalAmount ?? 0;
         _merchant = r.merchant ?? '';
         _syncControllers();
@@ -57,7 +71,9 @@ class _ParseScreenState extends State<ParseScreen> {
         _syncControllers();
       });
     }
-    FocusScope.of(context).unfocus();
+    if (mounted) {
+      FocusScope.of(context).unfocus();
+    }
   }
 
   void _syncControllers() {
@@ -68,6 +84,7 @@ class _ParseScreenState extends State<ParseScreen> {
 
   @override
   void dispose() {
+    _ocrProvider.removeListener(_onOcrChanged);
     _amountController.dispose();
     _merchantController.dispose();
     _descController.dispose();
@@ -134,22 +151,18 @@ class _ParseScreenState extends State<ParseScreen> {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: false,
+      backgroundColor: FinarusColors.background,
       appBar: AppBar(
         title: Text(_editing ? 'Edit Transaksi' : 'Hasil Deteksi'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: FinarusColors.foreground,
         actions: [
-          if (_amount > 0 || _merchant.isNotEmpty)
+          if (_amount > 0 || _merchant.isNotEmpty || _editing)
             TextButton(
               onPressed: _reset,
               child: const Text('Batal', style: TextStyle(color: Colors.red)),
-            ),
-          if (!_editing && (_amount > 0 || _merchant.isNotEmpty))
-            TextButton(
-              onPressed: () => setState(() => _editing = true),
-              child: const Text('Edit'),
             ),
         ],
       ),
@@ -170,10 +183,22 @@ class _ParseScreenState extends State<ParseScreen> {
                           _buildImagePreview(ocr),
                           const SizedBox(height: 20),
                         ],
+                        if (!_editing) ...[
+                          _buildEditButton(),
+                          const SizedBox(height: 20),
+                        ],
                       ] else ...[
+                        if (ocr.rawInput != null && ocr.rawInput!.isNotEmpty) ...[
+                          _buildRawTextCard(ocr.rawInput!),
+                          const SizedBox(height: 20),
+                        ],
+                        if (ocr.image != null) ...[
+                          _buildImagePreview(ocr),
+                          const SizedBox(height: 20),
+                        ],
                         _buildEmptyState(),
                       ],
-                      if (_editing || _amount == 0) ...[
+                      if (_editing) ...[
                         _buildFormSection(filteredCats, accounts),
                       ],
                     ],
@@ -271,6 +296,45 @@ class _ParseScreenState extends State<ParseScreen> {
     );
   }
 
+  Widget _buildRawTextCard(String raw) {
+    return GlassCard(
+      borderRadius: 20,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.text_snippet, size: 18, color: FinarusColors.mutedFg),
+              const SizedBox(width: 8),
+              const Text(
+                'Teks yang diterima',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: FinarusColors.foreground,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: FinarusColors.secondary.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: SelectableText(
+              raw,
+              style: TextStyle(fontSize: 12, color: FinarusColors.mutedFg, height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildImagePreview(OcrProvider ocr) {
     if (ocr.image == null) return const SizedBox.shrink();
     return ClipRRect(
@@ -284,58 +348,75 @@ class _ParseScreenState extends State<ParseScreen> {
     );
   }
 
+  Widget _buildEditButton() {
+    return GlassButton(
+      onPressed: () => setState(() => _editing = true),
+      child: const Text('Edit / Koreksi'),
+    );
+  }
+
   Widget _buildEmptyState() {
+    final hasInput = context.read<OcrProvider>().rawInput != null || context.read<OcrProvider>().image != null;
+
     return Column(
       children: [
         const SizedBox(height: 40),
-        Icon(Icons.document_scanner, size: 64, color: Colors.grey.shade400),
+        Icon(
+          hasInput ? Icons.warning_amber_rounded : Icons.document_scanner,
+          size: 64,
+          color: Colors.grey.shade400,
+        ),
         const SizedBox(height: 16),
-        const Text(
-          'Pilih sumber untuk mendeteksi transaksi',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        Text(
+          hasInput
+              ? 'Tidak dapat membaca transaksi dari gambar/teks'
+              : 'Pilih sumber untuk mendeteksi transaksi',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 32),
-        Row(
-          children: [
-            Expanded(
-              child: GlassCard(
-                borderRadius: 20,
-                padding: const EdgeInsets.all(20),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: _pickCamera,
-                  child: Column(
-                    children: [
-                      Icon(Icons.camera_alt, size: 40, color: FinarusColors.primary),
-                      const SizedBox(height: 8),
-                      const Text('Kamera'),
-                    ],
+        if (!hasInput) ...[
+          Row(
+            children: [
+              Expanded(
+                child: GlassCard(
+                  borderRadius: 20,
+                  padding: const EdgeInsets.all(20),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: _pickCamera,
+                    child: Column(
+                      children: [
+                        Icon(Icons.camera_alt, size: 40, color: FinarusColors.primary),
+                        const SizedBox(height: 8),
+                        const Text('Kamera'),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: GlassCard(
-                borderRadius: 20,
-                padding: const EdgeInsets.all(20),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: _pickGallery,
-                  child: Column(
-                    children: [
-                      Icon(Icons.photo_library, size: 40, color: FinarusColors.chartOrange),
-                      const SizedBox(height: 8),
-                      const Text('Galeri'),
-                    ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: GlassCard(
+                  borderRadius: 20,
+                  padding: const EdgeInsets.all(20),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: _pickGallery,
+                    child: Column(
+                      children: [
+                        Icon(Icons.photo_library, size: 40, color: FinarusColors.chartOrange),
+                        const SizedBox(height: 8),
+                        const Text('Galeri'),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
+            ],
+          ),
+          const SizedBox(height: 20),
+        ],
         Row(
           children: [
             Expanded(
@@ -353,8 +434,8 @@ class _ParseScreenState extends State<ParseScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: GlassButton(
-                onPressed: _editing ? null : () => setState(() => _editing = true),
-                child: const Text('Lanjut'),
+                onPressed: () => setState(() => _editing = true),
+                child: Text(hasInput ? 'Input Manual' : 'Lanjut'),
               ),
             ),
           ],
@@ -382,6 +463,7 @@ class _ParseScreenState extends State<ParseScreen> {
         const SizedBox(height: 16),
         TextField(
           controller: _amountController,
+          autofocus: false,
           keyboardType: TextInputType.number,
           decoration: InputDecoration(
             labelText: 'Jumlah (Rp)',
@@ -395,6 +477,7 @@ class _ParseScreenState extends State<ParseScreen> {
         const SizedBox(height: 12),
         TextField(
           controller: _merchantController,
+          autofocus: false,
           decoration: InputDecoration(
             labelText: 'Merchant / Toko',
             prefixIcon: const Icon(Icons.store),
@@ -407,6 +490,7 @@ class _ParseScreenState extends State<ParseScreen> {
         const SizedBox(height: 12),
         TextField(
           controller: _descController,
+          autofocus: false,
           decoration: InputDecoration(
             labelText: 'Deskripsi (opsional)',
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),

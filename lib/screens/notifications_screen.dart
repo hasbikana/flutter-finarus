@@ -225,7 +225,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
 
     if (confirmed == true && context.mounted) {
-      context.read<NotificationProvider>().rejectPending(pending.id);
+      final notifProvider = context.read<NotificationProvider>();
+      final success = await notifProvider.rejectPending(pending.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success ? 'Transaksi ditolak' : (notifProvider.lastActionError ?? 'Gagal menolak transaksi'),
+            ),
+          ),
+        );
+      }
     }
   }
 }
@@ -676,8 +686,9 @@ class _ApproveSheetState extends State<_ApproveSheet> {
                           );
                         }
                       } else {
+                        final error = context.read<NotificationProvider>().lastActionError ?? 'Gagal menyimpan transaksi';
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Gagal menyimpan transaksi')),
+                          SnackBar(content: Text(error)),
                         );
                       }
                     }

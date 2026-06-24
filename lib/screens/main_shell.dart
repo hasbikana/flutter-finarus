@@ -9,7 +9,8 @@ import '../providers/auth_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/ocr_provider.dart';
 import '../widgets/glass_card.dart';
-import '../services/share_handler.dart';
+import '../services/share_intent_service.dart';
+import '../services/share_file_resolver.dart';
 import '../services/notif_capture_handler.dart';
 import 'dashboard_screen.dart';
 import 'transactions_screen.dart';
@@ -31,7 +32,7 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
-  final _shareHandler = ShareHandlerService();
+  final _shareHandler = ShareIntentService();
   final _notifCapture = NotifCaptureHandler();
 
   final _screens = const [
@@ -44,13 +45,8 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
-    _shareHandler.init();
-    _shareHandler.getInitialData().then((data) {
-      _processShareData(data);
-    });
-    _shareHandler.onShare.listen((data) {
-      _processShareData(data);
-    });
+    _shareHandler.listen((data) async => await _processShareData(data));
+    _shareHandler.getInitialMedia((data) async => await _processShareData(data));
     _notifCapture.start(getToken: () => context.read<AuthProvider>().token);
   }
 
@@ -61,15 +57,36 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
-  void _processShareData(Map<String, String> data) {
-    if (!mounted || data.isEmpty) return;
+  Future<void> _processShareData(ShareIntentData data) async {
+    if (!mounted) {
+      debugPrint('[MainShell] _processShareData: not mounted');
+      return;
+    }
 
-    if (data.containsKey('text')) {
-      context.read<OcrProvider>().processText(data['text']!);
+    debugPrint('[MainShell] _processShareData: $data');
+
+    if (data.isText) {
+      final text = data.text!;
+      debugPrint('[MainShell] Processing text (${text.length} chars): ${text.length > 100 ? "${text.substring(0, 100)}..." : text}');
+      context.read<OcrProvider>().processText(text);
       _openParseScreen();
-    } else if (data.containsKey('imagePath')) {
-      context.read<OcrProvider>().processImagePath(data['imagePath']!);
-      _openParseScreen();
+    } else if (data.isImage) {
+      debugPrint('[MainShell] Resolving shared image: ${data.imagePath}');
+      final resolvedPath = await ShareFileResolver.resolve(data.imagePath!);
+      if (resolvedPath == null) {
+        debugPrint('[MainShell] Failed to resolve shared image');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Gagal membaca gambar yang dibagikan')),
+          );
+        }
+        return;
+      }
+      debugPrint('[MainShell] Processing resolved image: $resolvedPath');
+      if (mounted) {
+        context.read<OcrProvider>().processImagePath(resolvedPath);
+        _openParseScreen();
+      }
     }
   }
 
